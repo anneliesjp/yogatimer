@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Minimal Timer</title>
+
+<style>
+  :root{
+    --size: min(70vw, 520px);
+    --stroke: 10;
+    --dot: 34px;
+    --circ: 1696.46;
+  }
+
+  *{box-sizing:border-box}
+
+  html, body{
+    margin:0;
+    height:100%;
+    overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto;
+    color:white;
+  }
+
+  body{
+    background: url("background.jpg") center / cover no-repeat;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .duration-picker{
+    position:fixed;
+    top:18px;
+    left:18px;
+    z-index:10;
+    display:flex;
+    gap:6px;
+    padding:6px;
+    border-radius:999px;
+    background:rgba(255,255,255,0.13);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    opacity:.72;
+  }
+
+  .duration-picker button{
+    appearance:none;
+    border:0;
+    border-radius:999px;
+    padding:6px 8px;
+    background:transparent;
+    color:white;
+    font-size:12px;
+    font-weight:500;
+    cursor:pointer;
+    opacity:.82;
+  }
+
+  .duration-picker button.active{
+    background:rgba(255,255,255,0.28);
+    opacity:1;
+  }
+
+  .fullscreen-btn{
+    position:fixed;
+    top:18px;
+    right:18px;
+    z-index:10;
+    background:rgba(255,255,255,0.13);
+    border-radius:999px;
+    padding:8px 12px;
+    font-size:12px;
+    cursor:pointer;
+    opacity:.72;
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+  }
+
+  :fullscreen .fullscreen-btn,
+  :fullscreen .duration-picker{
+    opacity:.18;
+  }
+
+  .timer{
+    position:relative;
+    width:var(--size);
+    height:var(--size);
+  }
+
+  svg{
+    width:100%;
+    height:100%;
+    transform:rotate(-90deg);
+  }
+
+  .track{
+    fill:none;
+    stroke:rgba(255,255,255,0.2);
+    stroke-width:var(--stroke);
+  }
+
+  .progress{
+    fill:none;
+    stroke:white;
+    stroke-width:var(--stroke);
+    stroke-dasharray:var(--circ);
+    stroke-dashoffset:var(--circ);
+  }
+
+  .dot-orbit{
+    position:absolute;
+    inset:0;
+    transform:rotate(0deg);
+  }
+
+  .dot{
+    width:var(--dot);
+    height:var(--dot);
+    background:white;
+    border-radius:50%;
+    position:absolute;
+    top:calc(var(--dot) / -2);
+    left:calc(50% - var(--dot)/2);
+  }
+
+  .center{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  #time{
+    width:4.55ch;
+    text-align:left;
+    font-size:clamp(60px, 10vw, 100px);
+    font-weight:300;
+    letter-spacing:-0.04em;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+    line-height:1;
+  }
+
+  .btn{
+    position:absolute;
+    bottom:-140px;
+    left:50%;
+    transform:translateX(-50%);
+    width:90px;
+    height:90px;
+    border-radius:50%;
+    background:white;
+    color:#a24a7a;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+  }
+
+  .play{
+    width:0;height:0;
+    border-top:18px solid transparent;
+    border-bottom:18px solid transparent;
+    border-left:28px solid currentColor;
+    margin-left:6px;
+  }
+
+  .pause{
+    display:flex;
+    gap:10px;
+  }
+  .pause span{
+    width:8px;
+    height:30px;
+    background:currentColor;
+    border-radius:4px;
+  }
+
+  @media(max-width:700px){
+    .duration-picker{
+      gap:2px;
+      padding:5px;
+      max-width:calc(100vw - 110px);
+      flex-wrap:wrap;
+      border-radius:14px;
+    }
+    .duration-picker button{
+      font-size:11px;
+      padding:5px 6px;
+    }
+  }
+</style>
+</head>
+
+<body>
+
+<div class="duration-picker" id="durationPicker" aria-label="Select timer duration">
+  <button data-min="10">10</button>
+  <button data-min="15">15</button>
+  <button data-min="20">20</button>
+  <button data-min="25">25</button>
+  <button data-min="30" class="active">30</button>
+  <button data-min="35">35</button>
+  <button data-min="40">40</button>
+  <button data-min="45">45</button>
+</div>
+
+<div class="fullscreen-btn" id="fs">fullscreen</div>
+
+<div class="timer">
+  <svg viewBox="0 0 600 600">
+    <circle class="track" cx="300" cy="300" r="270"/>
+    <circle class="progress" id="progress" cx="300" cy="300" r="270"/>
+  </svg>
+
+  <div class="dot-orbit" id="orbit">
+    <div class="dot"></div>
+  </div>
+
+  <div class="center">
+    <div id="time">30:00</div>
+  </div>
+
+  <div class="btn" id="btn">
+    <div class="play"></div>
+  </div>
+</div>
+
+<script>
+let TOTAL = 30 * 60;
+const CIRC = 2 * Math.PI * 270;
+
+let running = false;
+let remaining = TOTAL;
+let last = performance.now();
+
+const timeEl = document.getElementById("time");
+const progress = document.getElementById("progress");
+const orbit = document.getElementById("orbit");
+const btn = document.getElementById("btn");
+const durationButtons = document.querySelectorAll(".duration-picker button");
+
+function pad(n){ return String(n).padStart(2,"0"); }
+function fmt(s){
+  s = Math.ceil(s);
+  return `${pad(Math.floor(s/60))}:${pad(s%60)}`;
+}
+
+function setButtonIcon(){
+  btn.innerHTML = running
+    ? '<div class="pause"><span></span><span></span></div>'
+    : '<div class="play"></div>';
+}
+
+function render(){
+  const elapsed = TOTAL - remaining;
+  const f = elapsed / TOTAL;
+
+  timeEl.textContent = fmt(remaining);
+  progress.style.strokeDasharray = CIRC;
+  progress.style.strokeDashoffset = CIRC * (1 - f);
+  orbit.style.transform = `rotate(${f * 360}deg)`;
+}
+
+function resetToMinutes(minutes){
+  running = false;
+  TOTAL = minutes * 60;
+  remaining = TOTAL;
+  setButtonIcon();
+  render();
+
+  durationButtons.forEach(button => {
+    button.classList.toggle("active", Number(button.dataset.min) === minutes);
+  });
+}
+
+function loop(now){
+  const dt = (now - last) / 1000;
+  last = now;
+
+  if(running && remaining > 0){
+    remaining = Math.max(0, remaining - dt);
+    render();
+
+    if(remaining <= 0){
+      running = false;
+      setButtonIcon();
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+
+btn.onclick = () => {
+  running = !running;
+  setButtonIcon();
+};
+
+durationButtons.forEach(button => {
+  button.onclick = () => resetToMinutes(Number(button.dataset.min));
+});
+
+document.getElementById("fs").onclick = () => {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen();
+  }
+};
+
+render();
+requestAnimationFrame(loop);
+</script>
+
+</body>
+</html>
